@@ -689,6 +689,64 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> {
             ),
 
             const SizedBox(height: 12),
+            // Recommendations just below the map
+            if (_topRecommendations.isNotEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionTitle('Top 5 Recommendations'),
+                  const SizedBox(height: 8),
+                  ..._topRecommendations.take(5).map((r) {
+                    final double fareBike = _locationService.calculateFarePkr(r.distanceKm, mode: 'Bicycle');
+                    final double fareCar = _locationService.calculateFarePkr(r.distanceKm, mode: 'Car');
+                    final double fareTruck = _locationService.calculateFarePkr(r.distanceKm, mode: 'Truck');
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: _cardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _accentColor.withOpacity(0.2)),
+                      ),
+                      child: ListTile(
+                        leading: const Icon(Icons.local_shipping, color: Colors.green),
+                        title: Text(r.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${r.distanceKm.toStringAsFixed(2)} km away', style: const TextStyle(color: Colors.white70)),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  _fareChip('Bicycle', fareBike),
+                                  _fareChip('Car', fareCar),
+                                  _fareChip('Truck', fareTruck),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.navigation, color: Colors.white),
+                          onPressed: () async {
+                            await _moveCamera(r.position, zoom: 15);
+                          },
+                        ),
+                        onTap: () async {
+                          destinationLatController.text = r.position.latitude.toStringAsFixed(6);
+                          destinationLngController.text = r.position.longitude.toStringAsFixed(6);
+                          _updateDestination(r.position);
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              ),
+
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               height: 44,
@@ -985,6 +1043,32 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> {
     );
   }
 
+  Widget _fareChip(String label, double fare) {
+    final Color accent = _accentColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            label == 'Bicycle' ? Icons.pedal_bike : label == 'Truck' ? Icons.local_shipping : Icons.directions_car,
+            size: 16,
+            color: accent,
+          ),
+          const SizedBox(width: 6),
+          Text('$label: ₨${fare.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  // duplicate removed
+
   void _showBookingConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -1033,6 +1117,7 @@ class _Recommendation {
   final double farePkr;
   _Recommendation({required this.name, required this.position, required this.distanceKm, required this.farePkr});
 }
+
 
 // Removed charts-related classes and helpers
 
