@@ -13,22 +13,62 @@ class LocationPricingService {
   Future<Position> getCurrentPosition() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      throw Exception('Location services are disabled');
+      throw Exception('Location services are disabled. Please enable location services in your browser.');
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        throw Exception('Location permission denied');
+        throw Exception('Location permission denied. Please allow location access in your browser.');
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      throw Exception('Location permissions are permanently denied');
+      throw Exception('Location permissions are permanently denied. Please enable location access in browser settings.');
     }
 
-    return Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    // Try multiple times with different strategies for better accuracy
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        print('Location attempt $attempt/3');
+        
+        // Try with best accuracy and longer timeout
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.best,
+          timeLimit: const Duration(seconds: 30),
+          forceAndroidLocationManager: false,
+        );
+        
+        print('Got position with accuracy: ${position.accuracy}m');
+        
+        // Accept any position, even with poor accuracy
+        return position;
+        
+      } catch (e) {
+        print('Attempt $attempt failed: $e');
+        
+        if (attempt == 3) {
+          // Final attempt with any accuracy
+          try {
+            final position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.lowest,
+              timeLimit: const Duration(seconds: 15),
+              forceAndroidLocationManager: false,
+            );
+            print('Final attempt got position with accuracy: ${position.accuracy}m');
+            return position;
+          } catch (finalError) {
+            throw Exception('Unable to get location after 3 attempts. Please use manual location input.');
+          }
+        }
+        
+        // Wait before retry
+        await Future.delayed(const Duration(seconds: 2));
+      }
+    }
+    
+    throw Exception('Unable to get location. Please use manual location input.');
   }
 
   double calculateDistanceKm({
