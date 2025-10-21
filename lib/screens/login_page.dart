@@ -54,7 +54,7 @@ class _LoginPageState extends State<LoginPage> {
     final String password = _passwordController.text;
 
     try {
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );

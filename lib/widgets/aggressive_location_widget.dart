@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart' as latlng;
 import '../service/location_pricing_service.dart';
 import '../service/geocoding_service.dart';
 import 'manual_location_widget.dart';

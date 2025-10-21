@@ -31,7 +31,10 @@
 
   <title>test_drive</title>
   <link rel="manifest" href="manifest.json">
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_WEB_MAPS_API_KEY"></script>
+  
+  <!-- Preload fonts to avoid loading issues -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" href="https://fonts.gstatic.com/s/roboto/v32/KFOmCnqEu92Fr1Me4GZLCzYlKw.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

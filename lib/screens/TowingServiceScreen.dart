@@ -28,6 +28,8 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
   String selectedVehicleType = 'Car';
   final TextEditingController locationController = TextEditingController();
   final TextEditingController destinationController = TextEditingController();
+  final TextEditingController serviceCountController = TextEditingController(text: '20');
+  final TextEditingController radiusController = TextEditingController(text: '50');
 
   final TextEditingController destinationLatController = TextEditingController();
   final TextEditingController destinationLngController = TextEditingController();
@@ -54,48 +56,6 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
 
   // NO HARDCODED CITIES - 100% REAL-TIME LOCATION SEARCH
 
-  // Get location name from coordinates using reverse geocoding
-  Future<String> _getLocationName(double lat, double lng) async {
-    try {
-      final response = await http.get(
-        Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1&zoom=18'),
-        headers: {'User-Agent': 'towing-app/1.0'},
-      );
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final address = data['display_name'] as String?;
-        if (address != null && address.isNotEmpty) {
-          // Try to get a more specific address
-          final addressParts = data['address'] as Map<String, dynamic>?;
-          if (addressParts != null) {
-            final building = addressParts['building'] ?? addressParts['house_number'];
-            final road = addressParts['road'];
-            final suburb = addressParts['suburb'];
-            final city = addressParts['city'] ?? addressParts['town'];
-            
-            if (building != null && road != null) {
-              return '$building $road, ${suburb ?? city ?? 'Lahore'}';
-            } else if (road != null) {
-              return '$road, ${suburb ?? city ?? 'Lahore'}';
-            }
-          }
-          
-          // Fallback to display_name but try to make it shorter
-          final parts = address.split(', ');
-          if (parts.length >= 4) {
-            return '${parts[0]}, ${parts[1]}, ${parts[2]}, ${parts[3]}';
-          } else if (parts.length >= 3) {
-            return '${parts[0]}, ${parts[1]}, ${parts[2]}';
-          }
-          return address;
-        }
-      }
-    } catch (e) {
-      print('Reverse geocoding error: $e');
-    }
-    return 'Current Location (${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
-  }
 
 
   // Route using OSRM demo server with GeoJSON polyline
@@ -178,54 +138,51 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
   Future<void> _getInitialLocation() async {
     try {
       setState(() {
-        _currentLocationName = 'Getting live location...';
+        _currentLocationName = 'Getting live GPS coordinates...';
       });
       
-      // Get live location quickly
+      // Get live GPS coordinates
       final pos = await _locationService.getCurrentPosition();
+      
+      // Show live coordinates directly
+      final liveCoordinates = 'Lat: ${pos.latitude.toStringAsFixed(6)}, Lng: ${pos.longitude.toStringAsFixed(6)}';
       
       setState(() {
         _initialCenter = latlng.LatLng(pos.latitude, pos.longitude);
         _currentPosition = pos;
         _pickupPos = latlng.LatLng(pos.latitude, pos.longitude);
-        _currentLocationName = 'Getting location name...';
+        _currentLocationName = liveCoordinates;
+        locationController.text = liveCoordinates;
       });
       
-      // Get location name from OpenStreetMap
-      final locationName = await _getLocationName(pos.latitude, pos.longitude);
-      setState(() {
-        _currentLocationName = locationName;
-        locationController.text = locationName;
-      });
-      
-      // Pin location on OpenStreetMap
+      // Pin live coordinates on map
       _addOrUpdatePickupMarker(_pickupPos!);
       _moveCamera(_pickupPos!, zoom: 16);
       
-      // Show success message
+      // Show success message with live coordinates
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Live location: $locationName'),
+            content: Text('Live GPS: $liveCoordinates\nAccuracy: ${pos.accuracy.toStringAsFixed(1)}m'),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
     } catch (e) {
-      print('Failed to get live location: $e');
+      print('Failed to get live GPS: $e');
       setState(() {
-        _currentLocationName = 'Location not available';
+        _currentLocationName = 'GPS not available';
       });
-      // If location fails, show a message to user
+      // If GPS fails, show a message to user
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Location error: $e\nPlease enable location services'),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('GPS Error: $e\nPlease enable location services'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+          duration: const Duration(seconds: 3),
+        ),
+      );
       }
     }
   }
@@ -243,17 +200,17 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
     // Calculate fare for current location to nearest service
     if (_topRecommendations.isNotEmpty) {
       final nearestService = _topRecommendations.first;
-      final distanceKm = _locationService.calculateDistanceKm(
-        startLat: pos.latitude,
-        startLng: pos.longitude,
+    final distanceKm = _locationService.calculateDistanceKm(
+      startLat: pos.latitude,
+      startLng: pos.longitude,
         endLat: nearestService.latitude,
         endLng: nearestService.longitude,
-      );
+    );
       final fare = _locationService.calculateFarePkr(distanceKm, mode: selectedVehicleType);
 
-      setState(() {
-        _lastDistanceKm = distanceKm;
-        _lastFarePkr = fare;
+    setState(() {
+      _lastDistanceKm = distanceKm;
+      _lastFarePkr = fare;
       });
 
       // Show fare in snackbar
@@ -291,16 +248,13 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
   }
 
   void _updatePickupLocation(latlng.LatLng newLocation) async {
+    // Show live coordinates directly
+    final liveCoordinates = 'Lat: ${newLocation.latitude.toStringAsFixed(6)}, Lng: ${newLocation.longitude.toStringAsFixed(6)}';
+    
     setState(() {
       _pickupPos = newLocation;
-      _currentLocationName = 'Getting location name...';
-    });
-    
-    // Get location name
-    final locationName = await _getLocationName(newLocation.latitude, newLocation.longitude);
-    setState(() {
-      _currentLocationName = locationName;
-      locationController.text = locationName;
+      _currentLocationName = liveCoordinates;
+      locationController.text = liveCoordinates;
     });
     
     _addOrUpdatePickupMarker(newLocation);
@@ -325,7 +279,7 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Location updated: $locationName'),
+        content: Text('Live GPS Updated: $liveCoordinates'),
         backgroundColor: Colors.green,
         duration: const Duration(seconds: 2),
       ),
@@ -364,16 +318,23 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
     try {
       setState(() => _isCalculating = true);
       
-      // Get more services for full list (increased limit)
+      // Get custom count and radius from input fields with validation
+      final int desiredCount = int.tryParse(serviceCountController.text.trim()) ?? 20;
+      final int limit = (desiredCount > 0 && desiredCount <= 1000) ? desiredCount : 20; // Max 1000, default 20
+      
+      final double customRadius = double.tryParse(radiusController.text.trim()) ?? 50.0;
+      final double radiusKm = (customRadius > 0 && customRadius <= 200) ? customRadius : 50.0; // Max 200km, default 50km
+      
+      // Get services with custom count and radius
       final services = await _towingServiceProvider.getNearbyTowingServices(
         latitude: origin.latitude,
         longitude: origin.longitude,
         vehicleType: selectedVehicleType,
-        radiusKm: 50.0,
-        limit: 20, // Increased from 5 to 20 for full list
+        radiusKm: radiusKm, // Use custom radius
+        limit: limit, // Use custom count
       );
 
-      setState(() {
+    setState(() {
         _topRecommendations = services;
       });
       _rebuildMarkers();
@@ -383,12 +344,12 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
         _autoCalculateFare();
       }
       
-      // Show success message with count
+      // Show success message with custom count and radius
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Found ${services.length} towing services nearby'),
+          content: Text('Found ${services.length} services within ${radiusKm.toStringAsFixed(0)}km (Requested: $limit)'),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
+          duration: const Duration(seconds: 3),
         ),
       );
     } catch (e) {
@@ -686,32 +647,33 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
             _buildSectionTitle('Location Details'),
             const SizedBox(height: 16),
 
-            // Aggressive Location Search - Gets Your EXACT Location
+            // Aggressive Location Search - Gets Your EXACT GPS Location
             if (_currentPosition == null)
               AggressiveLocationWidget(
                 onLocationFound: (position) async {
+                  // Show live GPS coordinates directly
+                  final liveCoordinates = 'Lat: ${position.latitude.toStringAsFixed(6)}, Lng: ${position.longitude.toStringAsFixed(6)}';
+                  
                   setState(() {
                     _currentPosition = position;
                     _pickupPos = latlng.LatLng(position.latitude, position.longitude);
                     _initialCenter = _pickupPos;
-                    _currentLocationName = 'Getting location name...';
-                  });
-                  
-                  // Get location name
-                  final locationName = await _getLocationName(position.latitude, position.longitude);
-                  setState(() {
-                    _currentLocationName = locationName;
-                    locationController.text = locationName;
+                    _currentLocationName = liveCoordinates;
+                    locationController.text = liveCoordinates;
                   });
                   
                   _addOrUpdatePickupMarker(_pickupPos!);
-                  _moveCamera(_pickupPos!, zoom: 14);
+                  _moveCamera(_pickupPos!, zoom: 16);
                 },
                 onAddressFound: (address) {
-                  setState(() {
-                    _currentLocationName = address;
-                    locationController.text = address;
-                  });
+                  // Keep coordinates even if address is found
+                  if (_currentPosition != null) {
+                    final liveCoordinates = 'Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}, Lng: ${_currentPosition!.longitude.toStringAsFixed(6)}';
+                    setState(() {
+                      _currentLocationName = liveCoordinates;
+                      locationController.text = liveCoordinates;
+                    });
+                  }
                 },
               )
             else
@@ -739,18 +701,18 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
             const SizedBox(height: 16),
 
             // Current Location Display
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
                 color: _cardColor,
-                borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(15),
                 border: Border.all(color: _accentColor.withOpacity(0.3)),
-              ),
+                ),
               child: Row(
-                children: [
+                  children: [
                   Icon(Icons.my_location, color: _accentColor, size: 24),
                   const SizedBox(width: 12),
-                  Expanded(
+                    Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -782,18 +744,18 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
 
             
             // Professional Live Location Map
-            Container(
+              Container(
               height: 350,
-              decoration: BoxDecoration(
+                decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
                     color: _accentColor.withOpacity(0.3),
                     blurRadius: 20,
                     spreadRadius: 2,
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: Stack(
@@ -802,10 +764,10 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
                     FlutterMap(
                       mapController: _mapController,
                       options: MapOptions(
-                        initialCenter: _initialCenter!,
+                          initialCenter: _initialCenter!,
                         initialZoom: 14,
                         onTap: (tapPos, point) => _onMapLongPress(point),
-                        onPointerDown: (event, point) => _onMapPointerDown(event, point),
+                          onPointerDown: (event, point) => _onMapPointerDown(event, point),
                         interactionOptions: const InteractionOptions(
                           flags: InteractiveFlag.all,
                         ),
@@ -823,7 +785,7 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
                           markers: _markers,
                         ),
                       ],
-                    )
+                      )
                     else
                       Container(
                         color: const Color(0xFF1F1B3C),
@@ -960,6 +922,160 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
               ),
 
             const SizedBox(height: 12),
+            
+            // Service Count and Radius Input
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _cardColor,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: _accentColor.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Search Parameters',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+            const SizedBox(height: 16),
+
+                  // Service Count Input
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Number of Services',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: serviceCountController,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Count (e.g., 500)',
+                                hintStyle: const TextStyle(color: Colors.white54),
+                                prefixIcon: const Icon(Icons.numbers, color: Colors.blue),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: _accentColor.withOpacity(0.3)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: _accentColor.withOpacity(0.3)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: _accentColor),
+                                ),
+                                filled: true,
+                                fillColor: _cardColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Search Radius (km)',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: radiusController,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Radius (e.g., 40)',
+                                hintStyle: const TextStyle(color: Colors.white54),
+                                prefixIcon: const Icon(Icons.place, color: Colors.green),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: _accentColor.withOpacity(0.3)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: _accentColor.withOpacity(0.3)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: _accentColor),
+                                ),
+                                filled: true,
+                                fillColor: _cardColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 12),
+                  
+                  // Info row
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        ),
+                        child: const Text(
+                          'Max: 1000 services',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.green.withOpacity(0.3)),
+                        ),
+                        child: const Text(
+                          'Max: 200km radius',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               height: 44,
@@ -970,14 +1086,14 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 icon: _isCalculating 
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
                   : const Icon(Icons.search, color: Colors.white),
                 label: Text(
-                  _isCalculating ? 'Finding Services...' : 'Find All Nearby Towing Services', 
+                  _isCalculating ? 'Finding Services...' : 'Find Custom Services', 
                   style: const TextStyle(color: Colors.white)
                 ),
               ),
@@ -1535,6 +1651,8 @@ class _TowingServiceScreenState extends State<TowingServiceScreen> with TickerPr
   void dispose() {
     locationController.dispose();
     destinationController.dispose();
+    serviceCountController.dispose();
+    radiusController.dispose();
     destinationLatController.dispose();
     destinationLngController.dispose();
     super.dispose();

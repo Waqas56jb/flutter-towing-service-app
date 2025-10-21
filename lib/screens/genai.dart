@@ -514,7 +514,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io';
 
 class GenAIScreen extends StatefulWidget {
   const GenAIScreen({super.key});

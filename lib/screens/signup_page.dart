@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:test_drive/screens/login_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -98,7 +97,7 @@ class _SignupPageState extends State<SignupPage> {
 
     if (isValidName && isValidEmail && isValidPassword) {
       try {
-        UserCredential userCredential = await _auth
+        await _auth
             .createUserWithEmailAndPassword(email: email, password: password);
 
         ScaffoldMessenger.of(

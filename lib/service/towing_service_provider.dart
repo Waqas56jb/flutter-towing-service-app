@@ -7,9 +7,6 @@ import 'geocoding_service.dart';
 
 class TowingServiceProvider {
   static const String _baseUrl = 'https://api.towing-services.com'; // Replace with your API
-  static const String _fallbackDataUrl = 'https://raw.githubusercontent.com/your-repo/towing-data/main/services.json';
-  
-  final LocationPricingService _locationService = LocationPricingService();
   final OverpassService _overpassService = OverpassService();
   final GeocodingService _geocodingService = GeocodingService();
 
